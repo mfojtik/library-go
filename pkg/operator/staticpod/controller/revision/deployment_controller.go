@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/openshift/library-go/pkg/operator/events"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -41,6 +42,8 @@ type RevisionController struct {
 
 	// queue only ever has one item, but it has nice error handling backoff/retry semantics
 	queue workqueue.RateLimitingInterface
+
+	eventRecorder events.Recorder
 }
 
 func NewRevisionController(
@@ -50,6 +53,7 @@ func NewRevisionController(
 	kubeInformersForTargetNamespace informers.SharedInformerFactory,
 	operatorConfigClient common.OperatorClient,
 	kubeClient kubernetes.Interface,
+	eventRecorder events.Recorder,
 ) *RevisionController {
 	c := &RevisionController{
 		targetNamespace: targetNamespace,
@@ -58,6 +62,7 @@ func NewRevisionController(
 
 		operatorConfigClient: operatorConfigClient,
 		kubeClient:           kubeClient,
+		eventRecorder:        eventRecorder,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "RevisionController"),
 	}
@@ -93,6 +98,9 @@ func (c RevisionController) createRevisionIfNeeded(operatorSpec *operatorv1.Oper
 		})
 		if !reflect.DeepEqual(operatorStatusOriginal, operatorStatus) {
 			_, updateError := c.operatorConfigClient.UpdateStatus(resourceVersion, operatorStatus)
+			if updateError != nil {
+				c.eventRecorder.Warningf("RevisionCreateFailed", "Failed to create revision %d: %v", nextRevision, err.Error())
+			}
 			return true, updateError
 		}
 		return true, nil
@@ -108,6 +116,7 @@ func (c RevisionController) createRevisionIfNeeded(operatorSpec *operatorv1.Oper
 		if updateError != nil {
 			return true, updateError
 		}
+		c.eventRecorder.Eventf("RevisionCreate", "Revision %d created because %s", operatorStatus.LatestAvailableRevision, reason)
 	}
 
 	return false, nil

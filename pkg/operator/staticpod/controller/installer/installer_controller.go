@@ -9,6 +9,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/golang/glog"
+	"github.com/openshift/library-go/pkg/operator/events"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
@@ -43,6 +44,8 @@ type InstallerController struct {
 
 	kubeClient kubernetes.Interface
 
+	eventRecorder events.Recorder
+
 	// queue only ever has one item, but it has nice error handling backoff/retry semantics
 	queue workqueue.RateLimitingInterface
 
@@ -72,6 +75,7 @@ func NewInstallerController(
 	kubeInformersForTargetNamespace informers.SharedInformerFactory,
 	operatorConfigClient common.OperatorClient,
 	kubeClient kubernetes.Interface,
+	eventRecorder events.Recorder,
 ) *InstallerController {
 	c := &InstallerController{
 		targetNamespace: targetNamespace,
@@ -82,6 +86,7 @@ func NewInstallerController(
 
 		operatorConfigClient: operatorConfigClient,
 		kubeClient:           kubeClient,
+		eventRecorder:        eventRecorder,
 
 		queue: workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "InstallerController"),
 
@@ -175,6 +180,8 @@ func (c *InstallerController) manageInstallationPods(operatorSpec *operatorv1.Op
 		// if we are in a transition, check to see if our installer pod completed
 		if currNodeState.TargetRevision > currNodeState.CurrentRevision {
 			if err := c.ensureInstallerPod(currNodeState.NodeName, operatorSpec, currNodeState.TargetRevision); err != nil {
+				c.eventRecorder.Warningf("InstallerPodFailed", "Failed to create installer pod for revision %d on node %q: %v",
+					currNodeState.TargetRevision, currNodeState.NodeName, err)
 				return true, err
 			}
 
@@ -191,6 +198,10 @@ func (c *InstallerController) manageInstallationPods(operatorSpec *operatorv1.Op
 				operatorStatus.NodeStatuses[i] = *newCurrNodeState
 				if !reflect.DeepEqual(originalOperatorStatus, operatorStatus) {
 					_, updateError := c.operatorConfigClient.UpdateStatus(resourceVersion, operatorStatus)
+					if updateError == nil {
+						c.eventRecorder.Eventf("NodeTargetRevisionChanged", "Moving node %q from revision %d to %d", currNodeState.NodeName,
+							currNodeState.CurrentRevision, currNodeState.TargetRevision)
+					}
 					return false, updateError
 				}
 			} else {
