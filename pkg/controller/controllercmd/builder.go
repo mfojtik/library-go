@@ -2,6 +2,7 @@ package controllercmd
 
 import (
 	"fmt"
+	"io/ioutil"
 	"time"
 
 	"github.com/golang/glog"
@@ -9,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/server/healthz"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
 
@@ -19,10 +21,11 @@ import (
 	leaderelectionconverter "github.com/openshift/library-go/pkg/config/leaderelection"
 	"github.com/openshift/library-go/pkg/config/serving"
 	"github.com/openshift/library-go/pkg/controller/fileobserver"
+	"github.com/openshift/library-go/pkg/operator/events"
 )
 
 // StartFunc is the function to call on leader election start
-type StartFunc func(config *rest.Config, stop <-chan struct{}) error
+type StartFunc func(config *rest.Config, eventRecorder events.Recorder, stop <-chan struct{}) error
 
 // defaultObserverInterval specifies the default interval that file observer will do rehash the files it watches and react to any changes
 // in those files.
@@ -34,6 +37,7 @@ type ControllerBuilder struct {
 	clientOverrides         *client.ClientConnectionOverrides
 	leaderElection          *configv1.LeaderElection
 	fileObserver            fileobserver.Observer
+	eventRecorder           events.Recorder
 
 	startFunc        StartFunc
 	componentName    string
@@ -67,6 +71,27 @@ func (b *ControllerBuilder) WithFileObserver(reactorFunc func(file string, actio
 		b.fileObserver = observer
 	}
 	b.fileObserver.AddReactor(reactorFunc, files...)
+	return b
+}
+
+// WithEventRecorder will enable event recording for this controller. To make this work, the 'EVENT_SOURCE_POD_NAME' environment variable has
+// to be present in system with a name of the pod that is currently running the container.
+func (b *ControllerBuilder) WithEventRecorder() *ControllerBuilder {
+	clientConfig, err := b.getClientConfig()
+	if err != nil {
+		panic(fmt.Sprintf("error getting client config: %v", err))
+	}
+	kubeClient := kubernetes.NewForConfigOrDie(clientConfig)
+	namespace, err := b.getNamespace()
+	if err != nil {
+		panic("unable to read the namespace")
+	}
+	controllerRef, err := events.GetControllerReferenceForCurrentPod(kubeClient.CoreV1().Pods(namespace))
+	if err != nil {
+		panic(fmt.Sprintf("unable to obtain replicaset reference for events: %v", err))
+	}
+
+	b.eventRecorder = events.NewRecorder(kubeClient.CoreV1().Events(namespace), b.componentName, controllerRef)
 	return b
 }
 
@@ -170,16 +195,15 @@ func (b *ControllerBuilder) Run(stopCh <-chan struct{}) error {
 	return fmt.Errorf("exited")
 }
 
-func (b *ControllerBuilder) getClientConfig() (*rest.Config, error) {
-	kubeconfig := ""
-	if b.kubeAPIServerConfigFile != nil {
-		kubeconfig = *b.kubeAPIServerConfigFile
+func (b *ControllerBuilder) getNamespace() (string, error) {
+	nsBytes, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+	if err != nil {
+		return "", err
 	}
-
-	return client.GetKubeConfigOrInClusterConfig(kubeconfig, b.clientOverrides)
+	return string(nsBytes), err
 }
 
-func (b *ControllerBuilder) getNamespace() (*rest.Config, error) {
+func (b *ControllerBuilder) getClientConfig() (*rest.Config, error) {
 	kubeconfig := ""
 	if b.kubeAPIServerConfigFile != nil {
 		kubeconfig = *b.kubeAPIServerConfigFile

@@ -32,7 +32,7 @@ var (
 )
 
 func init() {
-	if err := operatorv1alpha1.AddToScheme(configScheme); err != nil {
+	if err := operatorv1alpha1.Install(configScheme); err != nil {
 		panic(err)
 	}
 }
@@ -163,6 +163,7 @@ func (c *ControllerCommandConfig) StartController(stopCh <-chan struct{}) error 
 		WithLeaderElection(config.LeaderElection, "", c.componentName+"-lock").
 		WithServer(config.ServingInfo, config.Authentication, config.Authorization).
 		WithFileObserver(fileobserver.ExitOnChangeReactor, observedFiles...).
+		WithEventRecorder(c.componentName).
 		Run(stopCh)
 
 }
