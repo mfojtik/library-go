@@ -8,25 +8,23 @@ import (
 	clientgotesting "k8s.io/client-go/testing"
 )
 
-func fakeRecorderSource() *corev1.ObjectReference {
-	rs := makeFakeReplicaSet("test-namespace", "test-replicaset")
-	return &corev1.ObjectReference{
-		APIVersion:      rs.TypeMeta.APIVersion,
-		Kind:            rs.TypeMeta.Kind,
-		Name:            rs.Name,
-		Namespace:       rs.Namespace,
-		ResourceVersion: rs.ResourceVersion,
-		UID:             rs.UID,
+func fakeRecorderSource(t *testing.T) *corev1.ObjectReference {
+	eventSourcePodNameEnvFunc = func() string {
+		return "test"
 	}
+	client := fake.NewSimpleClientset(makeFakeReplicaSetPod("test-namespace", "test"))
+	ref, err := GetControllerReferenceForCurrentPod(client.CoreV1().Pods("test-namespace"))
+	if err != nil {
+		t.Fatalf("unable to get replicaset object reference: %v", err)
+	}
+	return ref
 }
 
 func TestNewRecorder(t *testing.T) {
 	client := fake.NewSimpleClientset()
-	r := NewRecorder(client.CoreV1().Events("test-namespace"), "test-operator", fakeRecorderSource())
+	r := NewRecorder(client.CoreV1().Events("test-namespace"), "test-operator", fakeRecorderSource(t))
 
-	if err := r.Event("TestReason", "foo"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	r.Event("TestReason", "foo")
 
 	var createdEvent *corev1.Event
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/golang/glog"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -11,10 +12,10 @@ import (
 
 // Recorder is a simple event recording interface.
 type Recorder interface {
-	Event(reason, message string) error
-	Eventf(reason, messageFmt string, args ...interface{}) error
-	Warning(reason, message string) error
-	Warningf(reason, messageFmt string, args ...interface{}) error
+	Event(reason, message string)
+	Eventf(reason, messageFmt string, args ...interface{})
+	Warning(reason, message string)
+	Warningf(reason, messageFmt string, args ...interface{})
 }
 
 // NewRecorder returns new event recorder.
@@ -34,28 +35,32 @@ type recorder struct {
 }
 
 // Event emits the normal type event and allow formatting of message.
-func (r *recorder) Eventf(reason, messageFmt string, args ...interface{}) error {
-	return r.Event(reason, fmt.Sprintf(messageFmt, args...))
+func (r *recorder) Eventf(reason, messageFmt string, args ...interface{}) {
+	r.Event(reason, fmt.Sprintf(messageFmt, args...))
 }
 
 // Warning emits the warning type event and allow formatting of message.
-func (r *recorder) Warningf(reason, messageFmt string, args ...interface{}) error {
-	return r.Warning(reason, fmt.Sprintf(messageFmt, args...))
+func (r *recorder) Warningf(reason, messageFmt string, args ...interface{}) {
+	r.Warning(reason, fmt.Sprintf(messageFmt, args...))
 }
 
 // Event emits the normal type event.
-func (r *recorder) Event(reason, message string) error {
-	_, err := r.eventClient.Create(r.makeEvent(r.involvedObjectRef, corev1.EventTypeNormal, reason, message))
-	return err
+func (r *recorder) Event(reason, message string) {
+	event := makeEvent(r.involvedObjectRef, r.sourceComponent, corev1.EventTypeNormal, reason, message)
+	if _, err := r.eventClient.Create(event); err != nil {
+		glog.Warningf("Error creating event %+v: %v", event, err)
+	}
 }
 
 // Warning emits the warning type event.
-func (r *recorder) Warning(reason, message string) error {
-	_, err := r.eventClient.Create(r.makeEvent(r.involvedObjectRef, corev1.EventTypeWarning, reason, message))
-	return err
+func (r *recorder) Warning(reason, message string) {
+	event := makeEvent(r.involvedObjectRef, r.sourceComponent, corev1.EventTypeWarning, reason, message)
+	if _, err := r.eventClient.Create(event); err != nil {
+		glog.Warningf("Error creating event %+v: %v", event, err)
+	}
 }
 
-func (r recorder) makeEvent(involvedObjRef *corev1.ObjectReference, eventType, reason, message string) *corev1.Event {
+func makeEvent(involvedObjRef *corev1.ObjectReference, sourceComponent string, eventType, reason, message string) *corev1.Event {
 	currentTime := metav1.Time{Time: time.Now()}
 	event := &corev1.Event{
 		ObjectMeta: metav1.ObjectMeta{
@@ -69,10 +74,9 @@ func (r recorder) makeEvent(involvedObjRef *corev1.ObjectReference, eventType, r
 		Count:          1,
 		FirstTimestamp: currentTime,
 		LastTimestamp:  currentTime,
-		EventTime:      metav1.MicroTime{Time: currentTime.Time},
 	}
-	if len(r.sourceComponent) > 0 {
-		event.Source.Component = r.sourceComponent
+	if len(sourceComponent) > 0 {
+		event.Source.Component = sourceComponent
 	}
 	return event
 }

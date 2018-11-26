@@ -3,33 +3,45 @@ package events
 import (
 	"testing"
 
-	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 )
 
-func makeFakeReplicaSet(namespace, name string) *appsv1.ReplicaSet {
-	rs := appsv1.ReplicaSet{}
-	rs.Name = name
-	rs.Namespace = namespace
-	rs.TypeMeta.Kind = "ReplicaSet"
-	rs.TypeMeta.APIVersion = "apps/v1"
-	return &rs
+func makeFakeReplicaSetPod(namespace, name string) *v1.Pod {
+	pod := v1.Pod{}
+	pod.Name = name
+	pod.Namespace = namespace
+	pod.TypeMeta.Kind = "Pod"
+	pod.TypeMeta.APIVersion = "v1"
+	truePtr := true
+	pod.SetOwnerReferences([]metav1.OwnerReference{
+		{
+			APIVersion:         "apps/v1",
+			Kind:               "ReplicaSet",
+			Name:               "test-766b85794f",
+			UID:                "05022234-d394-11e8-8169-42010a8e0003",
+			Controller:         &truePtr,
+			BlockOwnerDeletion: &truePtr,
+		},
+	})
+	return &pod
 }
 
 func TestGetReplicaSetOwnerReference(t *testing.T) {
-	client := fake.NewSimpleClientset(makeFakeReplicaSet("test", "foo"))
+	client := fake.NewSimpleClientset(makeFakeReplicaSetPod("test", "foo"))
 
-	eventSourceReplicaSetNameEnvFunc = func() string {
+	eventSourcePodNameEnvFunc = func() string {
 		return "foo"
 	}
 
-	objectReference, err := GetReplicaSetOwnerReference(client.AppsV1().ReplicaSets("test"))
+	objectReference, err := GetControllerReferenceForCurrentPod(client.CoreV1().Pods("test"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if objectReference.Name != "foo" {
-		t.Errorf("expected objectReference name to be 'foo', got %q", objectReference.Name)
+	if objectReference.Name != "test-766b85794f" {
+		t.Errorf("expected objectReference name to be 'test-766b85794f', got %q", objectReference.Name)
 	}
 
 	if objectReference.GroupVersionKind().String() != "apps/v1, Kind=ReplicaSet" {
