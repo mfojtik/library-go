@@ -13,13 +13,11 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/apiserver/pkg/util/logs"
 
 	operatorv1alpha1 "github.com/openshift/api/operator/v1alpha1"
 	"github.com/openshift/library-go/pkg/config/configdefaults"
-	"github.com/openshift/library-go/pkg/controller/fileobserver"
 	"github.com/openshift/library-go/pkg/crypto"
 	"github.com/openshift/library-go/pkg/serviceability"
 
@@ -75,7 +73,8 @@ func (c *ControllerCommandConfig) NewCommand() *cobra.Command {
 				glog.Fatal(err)
 			}
 
-			if err := c.StartController(wait.NeverStop); err != nil {
+			stopChan := make(chan struct{})
+			if err := c.StartController(stopChan); err != nil {
 				glog.Fatal(err)
 			}
 		},
@@ -97,7 +96,7 @@ func hasServiceServingCerts(certDir string) bool {
 }
 
 // StartController runs the controller
-func (c *ControllerCommandConfig) StartController(stopCh <-chan struct{}) error {
+func (c *ControllerCommandConfig) StartController(stopCh chan struct{}) error {
 	uncastConfig, err := c.basicFlags.ToConfigObj(configScheme, operatorv1alpha1.SchemeGroupVersion)
 	if err != nil {
 		return err
@@ -162,8 +161,8 @@ func (c *ControllerCommandConfig) StartController(stopCh <-chan struct{}) error 
 		WithKubeConfigFile(c.basicFlags.KubeConfigFile, nil).
 		WithLeaderElection(config.LeaderElection, "", c.componentName+"-lock").
 		WithServer(config.ServingInfo, config.Authentication, config.Authorization).
-		WithFileObserver(fileobserver.ExitOnChangeReactor, observedFiles...).
 		WithEventRecorder(c.componentName).
+		WithRestartOnChange(stopCh, observedFiles...).
 		Run(stopCh)
 
 }

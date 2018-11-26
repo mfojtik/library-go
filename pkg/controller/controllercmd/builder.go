@@ -59,7 +59,9 @@ func NewController(componentName string, startFunc StartFunc) *ControllerBuilder
 	}
 }
 
-func (b *ControllerBuilder) WithFileObserver(reactorFunc func(file string, action fileobserver.ActionType) error, files ...string) *ControllerBuilder {
+// WithRestartOnChange will enable a file observer controller loop that observes changes into specified files. If a change to a file is detected,
+// the process will be terminated with return code zero.
+func (b *ControllerBuilder) WithRestartOnChange(stopChan chan struct{}, files ...string) *ControllerBuilder {
 	if len(files) == 0 {
 		return b
 	}
@@ -69,6 +71,15 @@ func (b *ControllerBuilder) WithFileObserver(reactorFunc func(file string, actio
 			panic(err)
 		}
 		b.fileObserver = observer
+	}
+	reactorFunc := func(filename string, action fileobserver.ActionType) error {
+		message := fmt.Sprintf("Restart triggered because %s", action.String(filename))
+		if b.eventRecorder != nil {
+			b.eventRecorder.Event("OperatorRestarted", message)
+		}
+		glog.Warning(message)
+		close(stopChan)
+		return nil
 	}
 	b.fileObserver.AddReactor(reactorFunc, files...)
 	return b
@@ -175,7 +186,7 @@ func (b *ControllerBuilder) Run(stopCh <-chan struct{}) error {
 	}
 
 	if b.leaderElection == nil {
-		if err := b.startFunc(clientConfig, wait.NeverStop); err != nil {
+		if err := b.startFunc(clientConfig, b.eventRecorder, wait.NeverStop); err != nil {
 			return err
 		}
 		return fmt.Errorf("exited")
@@ -187,7 +198,7 @@ func (b *ControllerBuilder) Run(stopCh <-chan struct{}) error {
 	}
 
 	leaderElection.Callbacks.OnStartedLeading = func(stop <-chan struct{}) {
-		if err := b.startFunc(clientConfig, stop); err != nil {
+		if err := b.startFunc(clientConfig, b.eventRecorder, stop); err != nil {
 			glog.Fatal(err)
 		}
 	}
