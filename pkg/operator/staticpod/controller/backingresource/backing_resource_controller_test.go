@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openshift/library-go/pkg/operator/events"
 	"k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -175,11 +176,13 @@ func TestBackingResourceController(t *testing.T) {
 			for _, r := range tc.prependReactors {
 				kubeClient.PrependReactor(r.verb, r.resource, r.reaction)
 			}
+			eventRecorder := events.NewFakeRecorder()
 			c := NewBackingResourceController(
 				tc.targetNamespace,
 				tc.staticPodOperatorClient,
 				informers.NewSharedInformerFactoryWithOptions(kubeClient, 1*time.Minute, informers.WithNamespace(tc.targetNamespace)),
 				kubeClient,
+				eventRecorder,
 			)
 			syncErr := c.sync()
 			if tc.validateStatus != nil {

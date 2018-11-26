@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openshift/library-go/pkg/operator/events"
 	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -53,6 +54,8 @@ func TestNewNodeStateForInstallInProgress(t *testing.T) {
 		nil,
 	)
 
+	eventRecorder := events.NewRecorder(kubeClient.CoreV1().Events("test"), "test-operator", &v1.ObjectReference{})
+
 	c := NewInstallerController(
 		"test", "test-pod",
 		[]string{"test-config"},
@@ -61,6 +64,7 @@ func TestNewNodeStateForInstallInProgress(t *testing.T) {
 		kubeInformers,
 		fakeStaticPodOperatorClient,
 		kubeClient,
+		eventRecorder,
 	)
 	c.installerPodImageFn = func() string { return "docker.io/foo/bar" }
 
@@ -225,6 +229,7 @@ func TestCreateInstallerPod(t *testing.T) {
 		},
 		nil,
 	)
+	eventRecorder := events.NewRecorder(kubeClient.CoreV1().Events("test"), "test-operator", &v1.ObjectReference{})
 
 	c := NewInstallerController(
 		"test", "test-pod",
@@ -234,6 +239,7 @@ func TestCreateInstallerPod(t *testing.T) {
 		kubeInformers,
 		fakeStaticPodOperatorClient,
 		kubeClient,
+		eventRecorder,
 	)
 	c.installerPodImageFn = func() string { return "docker.io/foo/bar" }
 	if err := c.sync(); err != nil {
@@ -502,6 +508,8 @@ func TestCreateInstallerPodMultiNode(t *testing.T) {
 				statusUpdateErrorFunc,
 			)
 
+			eventRecorder := events.NewRecorder(kubeClient.CoreV1().Events("test"), "test-operator", &v1.ObjectReference{})
+
 			c := NewInstallerController(
 				"test-"+test.name, "test-pod",
 				[]string{"test-config"},
@@ -510,6 +518,7 @@ func TestCreateInstallerPodMultiNode(t *testing.T) {
 				kubeInformers,
 				fakeStaticPodOperatorClient,
 				kubeClient,
+				eventRecorder,
 			)
 			c.installerPodImageFn = func() string { return "docker.io/foo/bar" }
 

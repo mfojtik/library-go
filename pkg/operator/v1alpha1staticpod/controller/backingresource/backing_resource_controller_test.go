@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/openshift/library-go/pkg/operator/events"
 	"k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -180,6 +181,7 @@ func TestBackingResourceController(t *testing.T) {
 				tc.staticPodOperatorClient,
 				informers.NewSharedInformerFactoryWithOptions(kubeClient, 1*time.Minute, informers.WithNamespace(tc.targetNamespace)),
 				kubeClient,
+				events.NewFakeRecorder(),
 			)
 			syncErr := c.sync()
 			if tc.validateStatus != nil {
