@@ -9,6 +9,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	appsv1client "k8s.io/client-go/kubernetes/typed/apps/v1"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 )
 
@@ -31,7 +32,7 @@ var podNameEnvFunc = func() string {
 
 // GetControllerReferenceForCurrentPod provides an object reference to a controller managing the pod/container where this process runs.
 // The pod name must be provided via the POD_NAME name.
-func GetControllerReferenceForCurrentPod(client corev1client.PodInterface) (*corev1.ObjectReference, error) {
+func GetControllerReferenceForCurrentPod(client corev1client.PodInterface, rsClient appsv1client.ReplicaSetInterface) (*corev1.ObjectReference, error) {
 	podName := podNameEnvFunc()
 	if len(podName) == 0 {
 		return guessControllerReferenceForNamespace(client)
@@ -40,13 +41,18 @@ func GetControllerReferenceForCurrentPod(client corev1client.PodInterface) (*cor
 	if err != nil {
 		return nil, err
 	}
-	ownerRef := metav1.GetControllerOf(pod)
+	replicaSetOwnerRef := metav1.GetControllerOf(pod)
+	rs, err := rsClient.Get(replicaSetOwnerRef.Name, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+	deploymentOwnerRef := metav1.GetControllerOf(rs)
 	return &corev1.ObjectReference{
-		Kind:       ownerRef.Kind,
+		Kind:       deploymentOwnerRef.Kind,
 		Namespace:  pod.Namespace,
-		Name:       ownerRef.Name,
-		UID:        ownerRef.UID,
-		APIVersion: ownerRef.APIVersion,
+		Name:       deploymentOwnerRef.Name,
+		UID:        deploymentOwnerRef.UID,
+		APIVersion: deploymentOwnerRef.APIVersion,
 	}, nil
 }
 
