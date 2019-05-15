@@ -27,7 +27,7 @@ import (
 	"github.com/openshift/library-go/pkg/operator/events"
 )
 
-// StartFunc is the function to call on leader election start
+// StartFunc is the function to call on leader election startz test
 type StartFunc func(*ControllerContext) error
 
 type ControllerContext struct {
