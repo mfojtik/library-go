@@ -18,12 +18,19 @@ type Controller interface {
 	// Note that having more than one worker usually means handing parallelization of Sync().
 	Run(ctx context.Context, workers int)
 
+	// Name returns the controller name string.
+	Name() string
+
+	SyncInterface
+}
+
+// SyncInterface represents an controller structure that can perform sync() function.
+// This interface is convenience thing as one can use it in IDE to automatically generate
+// the func (c *controller) Sync(...) function.
+type SyncInterface interface {
 	// Sync contain the main controller logic.
 	// This should not be called directly, but can be used in unit tests to exercise the sync.
 	Sync(ctx context.Context, controllerContext SyncContext) error
-
-	// Name returns the controller name string.
-	Name() string
 }
 
 // SyncContext interface represents a context given to the Sync() function where the main controller logic happen.
