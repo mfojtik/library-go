@@ -33,7 +33,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0-rc1
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/opencontainers/runc v0.0.0-20191031171055-b133feaeeb2e // indirect
-	github.com/openshift/api v0.0.0-20201214114959-164a2fb63b5f
+	github.com/openshift/api v0.0.0-20210118151150-5935a5beec4b
 	github.com/openshift/build-machinery-go v0.0.0-20200917070002-f171684f77ab
 	github.com/openshift/client-go v0.0.0-20201214125552-e615e336eb49
 	github.com/pkg/errors v0.9.1
